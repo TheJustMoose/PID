@@ -73,8 +73,7 @@ struct SPid {
          pGain,        // proportional gain (1 .. 100)
          dGain;        // derivative gain (<= 1.0) ( * 1-256 / 256)
 
-  //SPid(): iGain(0.01), pGain(5), dGain(0.95) {
-  SPid(): iGain(0.0), pGain(1), dGain(0.0) {
+  SPid(): iGain(0.9), pGain(0.25), dGain(0.005) {
     dState = 0.0;
     iState = 0.0;
     iMin = 0;
@@ -86,9 +85,7 @@ struct SPid {
 
 
 double SPid::UpdatePID(double error, double position) {
-  double pTerm, dTerm, iTerm;
- 
-  pTerm = pGain * error;    // calculate the proportional term
+  double pTerm = pGain * error; // calculate the proportional term
 
   iState += error;          // calculate the integral state with appropriate limiting
   if (iState > iMax) 
@@ -96,22 +93,52 @@ double SPid::UpdatePID(double error, double position) {
   else if (iState < iMin) 
       iState = iMin;
 
-  iTerm = iGain * iState;    // calculate the integral term
-  dTerm = dGain * (position - dState);
+  double iTerm = iGain * iState;    // calculate the integral term
+  double dTerm = dGain * (position - dState);
+
   dState = position;
-  return pTerm + iTerm - dTerm;
+
+  return pTerm + iTerm - dTerm; // сумматор 2
 }
 
+class Motor {
+public:
+  int m_Speed;
+  double m_Load;
+
+  Motor(double load): m_Speed(0), m_Load(load) {}
+
+  void Set(int pwm) {
+    m_Speed = pwm*m_Load;
+  }
+
+  int Get() {
+    return m_Speed;
+  }
+
+};
+
+const long req_speed = 200; // моторчик должен разогнаться до 255 единиц скорости
+
+void test(double load) {
+  SPid pid;
+  Motor m(load);
+
+  for (int i = 0; i < 30; i++) {
+    int s = m.Get();
+    long act = pid.UpdatePID(
+      req_speed - s, // сумматор 1
+      s); // AVR PWM should work in range 0 - 255
+    m.Set(act);
+    printf("%4ld", s);
+  }
+
+  printf("\n");
+}
 
 int main() {
-  double eng[10] = {0.0, 0.2, 0.4, 0.6, 0.8,
-                    0.95, 0.99, 1.0, 1.0, 1.0};
-
-  SPid val;
-  for (int i = 0; i < 10; i++) {
-    double act = val.UpdatePID(1.0 - eng[i], eng[i]) * 255; // AVR PWM should work in range 0 - 255
-    printf("%4.2lf   %4.2lf\n", eng[i], act);
-  }
+  test(0.9);
+  test(1.0);
 
   return 0;
 }
