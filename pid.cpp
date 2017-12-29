@@ -61,44 +61,45 @@ http://roboforum.ru/wiki/%D0%9F%D0%B5%D1%80%D0%B5%D0%B2%D0%BE%D0%B4_%D1%81%D1%82
 */
 
 struct SPid {
-  double dState;                  // Last position input
-  double iState;                  // Integrator state
-  double iMax, iMin;
+  long dState;                  // Last position input
+  long iState;                  // Integrator state
+  long iMax, iMin;
 
-  // Maximum and minimum allowable integrator state
   // 1/65536 == 0,000015
   //  1/8192 == 0,00012
   //    1/64 == 0,015625
-  double iGain,        // integral gain (0.0001 .. 0.01) ( * 1-64  / 8192)
-         pGain,        // proportional gain (1 .. 100)
-         dGain;        // derivative gain (<= 1.0) ( * 1-256 / 256)
 
-  SPid(): iGain(0.9), pGain(0.25), dGain(0.005) {
-    dState = 0.0;
-    iState = 0.0;
+  // Maximum and minimum allowable integrator state
+  long iGain,        // integral gain (0.0001 .. 0.01) ( * 1-64  / 8192)
+       pGain,        // proportional gain (1 .. 100)
+       dGain;        // derivative gain (<= 1.0) ( * 1-256 / 256)
+
+  SPid():
+    iGain(long(0.9*65536)), pGain(long(0.25*65536)), dGain(long(0.005*65536)) {
+    dState = 0;
+    iState = 0;
     iMin = 0;
     iMax = 255;
   }
 
-  double UpdatePID(double error, double position);
+  long UpdatePID(long error, long position);
 };
 
 
-double SPid::UpdatePID(double error, double position) {
-  double pTerm = pGain * error; // calculate the proportional term
-
+long SPid::UpdatePID(long error, long position) {
   iState += error;          // calculate the integral state with appropriate limiting
-  if (iState > iMax) 
-      iState = iMax;     
-  else if (iState < iMin) 
+  if (iState > iMax)
+      iState = iMax;
+  else if (iState < iMin)
       iState = iMin;
 
-  double iTerm = iGain * iState;    // calculate the integral term
-  double dTerm = dGain * (position - dState);
+  long res = pGain * error +  // calculate the proportional term
+             iGain * iState - // calculate the integral term
+             dGain * (position - dState); // сумматор 2
+  res /= 65536;
 
   dState = position;
-
-  return pTerm + iTerm - dTerm; // сумматор 2
+  return res;
 }
 
 class Motor {
@@ -109,7 +110,7 @@ public:
   Motor(double load): m_Speed(0), m_Load(load) {}
 
   void Set(int pwm) {
-    m_Speed = pwm*m_Load;
+    m_Speed = int(pwm*m_Load);
   }
 
   int Get() {
