@@ -8,17 +8,32 @@ const byte LEFT_SENSOR_PIN = PINE4; // Arduino pin 2
 #define LEFT_SENSOR_PORT PINE // Do not use "const byte" here, it's not work
 
 volatile ULONG left_cnt = 0;
-ULONG last_check = 0;
-byte old_val = 0;
+//ULONG last_check = 0;
+ULONG white_cnt = 0;
 
 long req_speed = 0;
+uint16_t call_cnt = 0;
 
 boolean should_update_pid = false;
 
-void on_tmr() {
-  should_update_pid = true;
+void on_tmr() { // called every 500us
+  byte val = LEFT_SENSOR_PORT & _BV(LEFT_SENSOR_PIN);
+  if (!(val & 0x10)) { // white zone on encoder
+    white_cnt++;
+    if (white_cnt == 5) // just one time for zone
+      left_cnt++;
+  }
+  else
+    white_cnt = 0;
+
+  call_cnt++;
+  if (call_cnt == 1000) {
+    should_update_pid = true;
+    call_cnt = 0;
+  }
 }
 
+/*
 void pin_changed() {
   // should not check pin too often
   // I think it fail for good signal :(
@@ -35,7 +50,7 @@ void pin_changed() {
 
   PORTB = val ? 255 : 0;
 }
-
+*/
 ULONG left() {
   noInterrupts();
   ULONG res = left_cnt;
@@ -50,30 +65,27 @@ void clr_left() {
 }
 
 void setup() {
-  Timer1.initialize(250000); // in us
+  Timer1.initialize(500); // in us
   Timer1.attachInterrupt(on_tmr);
-  Serial.begin(9600);
+  Serial.begin(115200);
 
-  attachInterrupt(digitalPinToInterrupt(2), pin_changed, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(2), pin_changed, CHANGE);
 
   pinMode(8, OUTPUT);
-  pinMode(13, OUTPUT);
-
   analogWrite(8, 0);
-  digitalWrite(13, LOW);
 }
 
-byte _pwm = 255;
+byte _pwm = 0;
 
 void ctrl() {
   if (Serial.available() > 0) {
     char c = Serial.read();
     if (c == 'r') {
-      req_speed = 50; // 50 max at this freq
+      req_speed = 100; // max at this freq
       _pwm = 0;
     }
     if (c == 'm') {
-      req_speed = 25;
+      req_speed = 50;
       _pwm = 0;
     }
     if (c == 's') {
@@ -82,11 +94,13 @@ void ctrl() {
     }
 
     if (c == '+' && _pwm < 255)
-      _pwm++;
+      _pwm ++;
     if (c == '-' && _pwm > 0)
-      _pwm--;
+      _pwm --;
     if (c == '*')
       _pwm = 128;
+    if (c == '/')
+      _pwm = 160;
   }
 }
 
@@ -105,7 +119,7 @@ struct SPid {
        dGain;        // derivative gain (<= 1.0) ( * 1-256 / 256)
 
   SPid():
-    iGain(long(0.0*65536)), pGain(long(3.3*65536)), dGain(long(0.0*65536)) { // 05
+    iGain(long(0.95*65536)), pGain(long(2.7*65536)), dGain(long(0.002*65536)) { // 05
     dState = 0;
     iState = 0;
     iMin = 0;
@@ -141,13 +155,7 @@ void loop() {
 
   should_update_pid = false;
 
-  if (_pwm) {
-    analogWrite(8, _pwm);
-    Serial.println(_pwm);
-    return;
-  }
-
-  if (req_speed == 0) {
+  if (req_speed == 0 && !_pwm) {
     analogWrite(8, 0);
     return;
   }
@@ -155,18 +163,28 @@ void loop() {
   ULONG s = left(); // real speed
   clr_left();
 
+  if (_pwm) {
+    analogWrite(8, _pwm);
+    Serial.print(_pwm);
+    Serial.print(" ");
+    Serial.println(s);
+    return;
+  }
+
   long act = pid.UpdatePID(
                req_speed - s, // sum 1
                s); // AVR PWM should work in range 0 - 255
 
   Serial.print(act);
   if (act < 0)
-    act = 100; // min pwm val for motor
+    act = 0; // min pwm val for motor
   if (act > 255)
     act = 255;
 
-  analogWrite(8, 255);
+  analogWrite(8, act);
 
+  Serial.print(" ");
+  Serial.print(act);
   Serial.print(" ");
   Serial.println(s);
 }
