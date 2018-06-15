@@ -11,6 +11,7 @@ class OpticalSensor {
   volatile ULONG cnt_ = 0;
 
   ULONG left();
+  void clr_left();
 };
 
 OpticalSensor Left;
@@ -41,14 +42,14 @@ void on_tmr() { // called every 500us
 
 ULONG OpticalSensor::left() {
   noInterrupts();
-  ULONG res = Left.cnt_;
+  ULONG res = cnt_;
   interrupts();
   return res;
 }
 
-void clr_left() {
+void OpticalSensor::clr_left() {
   noInterrupts();
-  Left.cnt_ = 0;
+  cnt_ = 0;
   interrupts();
 }
 
@@ -147,7 +148,7 @@ void loop() {
   }
 
   ULONG s = Left.left(); // real speed
-  clr_left();
+  Left.clr_left();
 
   if (_pwm) {
     analogWrite(8, _pwm);
