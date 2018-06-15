@@ -9,6 +9,8 @@ const byte LEFT_SENSOR_PIN = PINE4; // Arduino pin 2
 class OpticalSensor {
  public:
   volatile ULONG cnt_ = 0;
+
+  ULONG left();
 };
 
 OpticalSensor Left;
@@ -37,7 +39,7 @@ void on_tmr() { // called every 500us
   }
 }
 
-ULONG left() {
+ULONG OpticalSensor::left() {
   noInterrupts();
   ULONG res = Left.cnt_;
   interrupts();
@@ -144,7 +146,7 @@ void loop() {
     return;
   }
 
-  ULONG s = left(); // real speed
+  ULONG s = Left.left(); // real speed
   clr_left();
 
   if (_pwm) {
