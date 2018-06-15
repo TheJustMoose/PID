@@ -4,20 +4,23 @@ typedef unsigned long ULONG;
 
 // motor speed sensor pins
 const byte LEFT_SENSOR_PIN = PINE4; // Arduino pin 2
-#define LEFT_SENSOR_PORT PINE // Do not use "const byte" here, it's not work
+#define SENSOR_PORT PINE // Do not use "const byte" here, it's not work
 
 class OpticalSensor {
  private:
   volatile ULONG cnt_ = 0;
   volatile ULONG white_cnt_ = 0;
+  int pin_;
 
  public:
+  OpticalSensor(int pin);
+
   ULONG Get();
   void Clear();
   void Check();
 };
 
-OpticalSensor Left;
+OpticalSensor Left(LEFT_SENSOR_PIN);
 
 long req_speed = 0;
 uint16_t call_cnt = 0;
@@ -34,8 +37,12 @@ void on_tmr() { // called every 500us
   }
 }
 
+OpticalSensor::OpticalSensor(int pin)
+  : pin_(pin) {
+}
+
 void OpticalSensor::Check() {
-  byte val = LEFT_SENSOR_PORT & _BV(LEFT_SENSOR_PIN);
+  byte val = SENSOR_PORT & _BV(pin_);
   if (!(val & 0x10)) { // white zone on encoder
     white_cnt_++;
     if (white_cnt_ == 5) // just one time for zone
