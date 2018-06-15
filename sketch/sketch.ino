@@ -12,6 +12,7 @@ class OpticalSensor {
 
   ULONG Get();
   void Clear();
+  void Check();
 };
 
 OpticalSensor Left;
@@ -24,20 +25,24 @@ uint16_t call_cnt = 0;
 boolean should_update_pid = false;
 
 void on_tmr() { // called every 500us
-  byte val = LEFT_SENSOR_PORT & _BV(LEFT_SENSOR_PIN);
-  if (!(val & 0x10)) { // white zone on encoder
-    white_cnt++;
-    if (white_cnt == 5) // just one time for zone
-      Left.cnt_++;
-  }
-  else
-    white_cnt = 0;
+  Left.Check();
 
   call_cnt++;
   if (call_cnt == 1000) {
     should_update_pid = true;
     call_cnt = 0;
   }
+}
+
+void OpticalSensor::Check() {
+  byte val = LEFT_SENSOR_PORT & _BV(LEFT_SENSOR_PIN);
+  if (!(val & 0x10)) { // white zone on encoder
+    white_cnt++;
+    if (white_cnt == 5) // just one time for zone
+      cnt_++;
+  }
+  else
+    white_cnt = 0;
 }
 
 ULONG OpticalSensor::Get() {
