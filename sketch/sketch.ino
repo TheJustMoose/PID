@@ -4,6 +4,7 @@ typedef unsigned long ULONG;
 
 // motor speed sensor pins
 const byte LEFT_SENSOR_PIN = PINE4; // Arduino pin 2
+const byte RIGHT_SENSOR_PIN = PINE5; // Arduino pin 5
 #define SENSOR_PORT PINE // Do not use "const byte" here, it's not work
 
 class OpticalSensor {
@@ -20,22 +21,43 @@ class OpticalSensor {
   void Check();
 };
 
-OpticalSensor Left(LEFT_SENSOR_PIN);
+struct SPid {
+  long dState;                  // Last position input
+  long iState;                  // Integrator state
+  long iMax, iMin;
+
+  // 1/65536 == 0,000015
+  //  1/8192 == 0,00012
+  //    1/64 == 0,015625
+
+  // Maximum and minimum allowable integrator state
+  long iGain,        // integral gain (0.0001 .. 0.01) ( * 1-64  / 8192)
+       pGain,        // proportional gain (1 .. 100)
+       dGain;        // derivative gain (<= 1.0) ( * 1-256 / 256)
+
+  SPid():
+    iGain(long(0.95*65536)), pGain(long(2.7*65536)), dGain(long(0.002*65536)) { // 05
+    dState = 0;
+    iState = 0;
+    iMin = 0;
+    iMax = 255;
+  }
+
+  long UpdatePID(long error, long position);
+};
+
 
 long req_speed = 0;
 uint16_t call_cnt = 0;
 
 boolean should_update_pid = false;
 
-void on_tmr() { // called every 500us
-  Left.Check();
+OpticalSensor LeftSensor(LEFT_SENSOR_PIN);
+OpticalSensor RightSensor(RIGHT_SENSOR_PIN);
 
-  call_cnt++;
-  if (call_cnt == 1000) {
-    should_update_pid = true;
-    call_cnt = 0;
-  }
-}
+SPid LeftPid;
+SPid RightPid;
+
 
 OpticalSensor::OpticalSensor(int pin)
   : pin_(pin) {
@@ -63,6 +85,32 @@ void OpticalSensor::Clear() {
   noInterrupts();
   cnt_ = 0;
   interrupts();
+}
+
+long SPid::UpdatePID(long error, long position) {
+  iState += error;          // calculate the integral state with appropriate limiting
+  if (iState > iMax)
+      iState = iMax;
+  else if (iState < iMin)
+      iState = iMin;
+
+  long res = pGain * error +  // calculate the proportional term
+             iGain * iState - // calculate the integral term
+             dGain * (position - dState); // сумматор 2
+  res /= 65536;
+
+  dState = position;
+  return res;
+}
+
+void on_tmr() { // called every 500us
+  LeftSensor.Check();
+
+  call_cnt++;
+  if (call_cnt == 1000) {
+    should_update_pid = true;
+    call_cnt = 0;
+  }
 }
 
 void setup() {
@@ -103,49 +151,12 @@ void ctrl() {
   }
 }
 
-struct SPid {
-  long dState;                  // Last position input
-  long iState;                  // Integrator state
-  long iMax, iMin;
-
-  // 1/65536 == 0,000015
-  //  1/8192 == 0,00012
-  //    1/64 == 0,015625
-
-  // Maximum and minimum allowable integrator state
-  long iGain,        // integral gain (0.0001 .. 0.01) ( * 1-64  / 8192)
-       pGain,        // proportional gain (1 .. 100)
-       dGain;        // derivative gain (<= 1.0) ( * 1-256 / 256)
-
-  SPid():
-    iGain(long(0.95*65536)), pGain(long(2.7*65536)), dGain(long(0.002*65536)) { // 05
-    dState = 0;
-    iState = 0;
-    iMin = 0;
-    iMax = 255;
-  }
-
-  long UpdatePID(long error, long position);
-};
-
-
-long SPid::UpdatePID(long error, long position) {
-  iState += error;          // calculate the integral state with appropriate limiting
-  if (iState > iMax)
-      iState = iMax;
-  else if (iState < iMin)
-      iState = iMin;
-
-  long res = pGain * error +  // calculate the proportional term
-             iGain * iState - // calculate the integral term
-             dGain * (position - dState); // сумматор 2
-  res /= 65536;
-
-  dState = position;
-  return res;
+void LimitValue(long &act) {
+  if (act < 0)
+    act = 0; // min pwm val for motor
+  if (act > 255)
+    act = 255;
 }
-
-SPid pid;
 
 void loop() {
   ctrl();
@@ -159,32 +170,38 @@ void loop() {
     return;
   }
 
-  ULONG s = Left.Get(); // real speed
-  Left.Clear();
+  ULONG ls = LeftSensor.Get(); // real speed
+  ULONG rs = RightSensor.Get();
+  LeftSensor.Clear();
+  RightSensor.Clear();
 
   if (_pwm) {
     analogWrite(8, _pwm);
     Serial.print(_pwm);
     Serial.print(" ");
-    Serial.println(s);
+    Serial.println(ls);
     return;
   }
 
-  long act = pid.UpdatePID(
-               req_speed - s, // sum 1
-               s); // AVR PWM should work in range 0 - 255
+  long lact = LeftPid.UpdatePID(
+               req_speed - ls, // sum 1
+               ls); // AVR PWM should work in range 0 - 255
+  long ract = RightPid.UpdatePID(
+               req_speed - rs, // sum 1
+               rs); // AVR PWM should work in range 0 - 255
 
-  Serial.print(act);
-  if (act < 0)
-    act = 0; // min pwm val for motor
-  if (act > 255)
-    act = 255;
+  Serial.print(lact);
+  LimitValue(lact);
 
-  analogWrite(8, act);
+  Serial.print(ract);
+  LimitValue(ract);
+
+  analogWrite(8, lact);
+  analogWrite(8, ract);
 
   Serial.print(" ");
-  Serial.print(act);
+  Serial.print(lact);
   Serial.print(" ");
-  Serial.println(s);
+  Serial.println(ls);
 }
 
