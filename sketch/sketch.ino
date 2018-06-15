@@ -6,7 +6,13 @@ typedef unsigned long ULONG;
 const byte LEFT_SENSOR_PIN = PINE4; // Arduino pin 2
 #define LEFT_SENSOR_PORT PINE // Do not use "const byte" here, it's not work
 
-volatile ULONG left_cnt = 0;
+class OpticalSensor {
+ public:
+  volatile ULONG cnt_ = 0;
+};
+
+OpticalSensor Left;
+
 ULONG white_cnt = 0;
 
 long req_speed = 0;
@@ -19,7 +25,7 @@ void on_tmr() { // called every 500us
   if (!(val & 0x10)) { // white zone on encoder
     white_cnt++;
     if (white_cnt == 5) // just one time for zone
-      left_cnt++;
+      Left.cnt_++;
   }
   else
     white_cnt = 0;
@@ -33,14 +39,14 @@ void on_tmr() { // called every 500us
 
 ULONG left() {
   noInterrupts();
-  ULONG res = left_cnt;
+  ULONG res = Left.cnt_;
   interrupts();
   return res;
 }
 
 void clr_left() {
   noInterrupts();
-  left_cnt = 0;
+  Left.cnt_ = 0;
   interrupts();
 }
 
