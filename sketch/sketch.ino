@@ -10,8 +10,8 @@ class OpticalSensor {
  public:
   volatile ULONG cnt_ = 0;
 
-  ULONG left();
-  void clr_left();
+  ULONG Get();
+  void Clear();
 };
 
 OpticalSensor Left;
@@ -40,14 +40,14 @@ void on_tmr() { // called every 500us
   }
 }
 
-ULONG OpticalSensor::left() {
+ULONG OpticalSensor::Get() {
   noInterrupts();
   ULONG res = cnt_;
   interrupts();
   return res;
 }
 
-void OpticalSensor::clr_left() {
+void OpticalSensor::Clear() {
   noInterrupts();
   cnt_ = 0;
   interrupts();
@@ -147,8 +147,8 @@ void loop() {
     return;
   }
 
-  ULONG s = Left.left(); // real speed
-  Left.clr_left();
+  ULONG s = Left.Get(); // real speed
+  Left.Clear();
 
   if (_pwm) {
     analogWrite(8, _pwm);
