@@ -7,9 +7,10 @@ const byte LEFT_SENSOR_PIN = PINE4; // Arduino pin 2
 #define LEFT_SENSOR_PORT PINE // Do not use "const byte" here, it's not work
 
 class OpticalSensor {
- public:
+ private:
   volatile ULONG cnt_ = 0;
 
+ public:
   ULONG Get();
   void Clear();
   void Check();
