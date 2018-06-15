@@ -9,6 +9,7 @@ const byte LEFT_SENSOR_PIN = PINE4; // Arduino pin 2
 class OpticalSensor {
  private:
   volatile ULONG cnt_ = 0;
+  volatile ULONG white_cnt_ = 0;
 
  public:
   ULONG Get();
@@ -17,8 +18,6 @@ class OpticalSensor {
 };
 
 OpticalSensor Left;
-
-ULONG white_cnt = 0;
 
 long req_speed = 0;
 uint16_t call_cnt = 0;
@@ -38,12 +37,12 @@ void on_tmr() { // called every 500us
 void OpticalSensor::Check() {
   byte val = LEFT_SENSOR_PORT & _BV(LEFT_SENSOR_PIN);
   if (!(val & 0x10)) { // white zone on encoder
-    white_cnt++;
-    if (white_cnt == 5) // just one time for zone
+    white_cnt_++;
+    if (white_cnt_ == 5) // just one time for zone
       cnt_++;
   }
   else
-    white_cnt = 0;
+    white_cnt_ = 0;
 }
 
 ULONG OpticalSensor::Get() {
