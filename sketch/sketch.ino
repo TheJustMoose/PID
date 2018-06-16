@@ -4,8 +4,11 @@ typedef unsigned long ULONG;
 
 // motor speed sensor pins
 const byte LEFT_SENSOR_PIN = PINE4; // Arduino pin 2
-const byte RIGHT_SENSOR_PIN = PINE5; // Arduino pin 5
+const byte RIGHT_SENSOR_PIN = PINE5; // Arduino pin 3
 #define SENSOR_PORT PINE // Do not use "const byte" here, it's not work
+
+const int left_pwm_pin = 46;
+const int right_pwm_pin = 44;
 
 class OpticalSensor {
  private:
@@ -36,7 +39,8 @@ struct SPid {
        dGain;        // derivative gain (<= 1.0) ( * 1-256 / 256)
 
   SPid():
-    iGain(long(0.95*65536)), pGain(long(2.7*65536)), dGain(long(0.002*65536)) { // 05
+    iGain(long(1.0*65536)), pGain(long(1.0*65536)), dGain(long(0.0*65536)) {
+    //iGain(long(0.95*65536)), pGain(long(2.7*65536)), dGain(long(0.002*65536)) {
     dState = 0;
     iState = 0;
     iMin = 0;
@@ -64,10 +68,9 @@ OpticalSensor::OpticalSensor(int pin)
 }
 
 void OpticalSensor::Check() {
-  byte val = SENSOR_PORT & _BV(pin_);
-  if (!(val & 0x10)) { // white zone on encoder
+  if (SENSOR_PORT & _BV(pin_)) { // white zone on encoder
     white_cnt_++;
-    if (white_cnt_ == 5) // just one time for zone
+    if (white_cnt_ == 3) // just one time for zone
       cnt_++;
   }
   else
@@ -105,6 +108,7 @@ long SPid::UpdatePID(long error, long position) {
 
 void on_tmr() { // called every 500us
   LeftSensor.Check();
+  RightSensor.Check();
 
   call_cnt++;
   if (call_cnt == 1000) {
@@ -117,9 +121,25 @@ void setup() {
   Timer1.initialize(500); // in us
   Timer1.attachInterrupt(on_tmr);
   Serial.begin(115200);
+  Serial.println("Started!");
 
-  pinMode(8, OUTPUT);
-  analogWrite(8, 0);
+  // left pins
+  pinMode(left_pwm_pin, OUTPUT);
+  pinMode(51, OUTPUT);
+  pinMode(53, OUTPUT);
+  // left forward
+  analogWrite(left_pwm_pin, 0);
+  digitalWrite(51, HIGH);
+  digitalWrite(53, LOW);
+
+  // right pins
+  pinMode(right_pwm_pin, OUTPUT);
+  pinMode(47, OUTPUT);
+  pinMode(49, OUTPUT);
+  // right forward
+  analogWrite(right_pwm_pin, 0);
+  digitalWrite(47, LOW);
+  digitalWrite(49, HIGH);
 }
 
 byte _pwm = 0;
@@ -128,11 +148,11 @@ void ctrl() {
   if (Serial.available() > 0) {
     char c = Serial.read();
     if (c == 'r') {
-      req_speed = 100; // max at this freq
+      req_speed = 120; // max at this freq
       _pwm = 0;
     }
     if (c == 'm') {
-      req_speed = 50;
+      req_speed = 80;
       _pwm = 0;
     }
     if (c == 's') {
@@ -148,14 +168,18 @@ void ctrl() {
       _pwm = 128;
     if (c == '/')
       _pwm = 160;
+    if (c == '\\')
+      _pwm = 225;
+    if (c == '#')
+      _pwm = 255;
   }
 }
 
 void LimitValue(long &act) {
   if (act < 0)
     act = 0; // min pwm val for motor
-  if (act > 255)
-    act = 255;
+  if (act > 250)
+    act = 250;
 }
 
 void loop() {
@@ -166,7 +190,8 @@ void loop() {
   should_update_pid = false;
 
   if (req_speed == 0 && !_pwm) {
-    analogWrite(8, 0);
+    analogWrite(left_pwm_pin, 0);
+    analogWrite(right_pwm_pin, 0);
     return;
   }
 
@@ -176,10 +201,13 @@ void loop() {
   RightSensor.Clear();
 
   if (_pwm) {
-    analogWrite(8, _pwm);
+    analogWrite(left_pwm_pin, _pwm);
+    analogWrite(right_pwm_pin, _pwm);
     Serial.print(_pwm);
     Serial.print(" ");
-    Serial.println(ls);
+    Serial.print(ls);
+    Serial.print(" ");
+    Serial.println(rs);
     return;
   }
 
@@ -193,15 +221,16 @@ void loop() {
   Serial.print(lact);
   LimitValue(lact);
 
+  Serial.print(" ");
   Serial.print(ract);
   LimitValue(ract);
 
-  analogWrite(8, lact);
-  analogWrite(8, ract);
+  analogWrite(left_pwm_pin, lact);
+  analogWrite(right_pwm_pin, ract);
 
+  Serial.print(" s: ");
+  Serial.print(ls);
   Serial.print(" ");
-  Serial.print(lact);
-  Serial.print(" ");
-  Serial.println(ls);
+  Serial.println(rs);
 }
 
