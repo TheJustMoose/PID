@@ -41,8 +41,12 @@ struct SPid {
   SPid():
     iGain(long(1.0*65536)), pGain(long(1.0*65536)), dGain(long(0.0*65536)) {
     //iGain(long(0.95*65536)), pGain(long(2.7*65536)), dGain(long(0.002*65536)) {
+    Init();
+  }
+
+  void Init() {
     dState = 0;
-    iState = 0;
+    iState = 160; // magic value for smooth start
     iMin = 0;
     iMax = 255;
   }
@@ -62,6 +66,12 @@ OpticalSensor RightSensor(RIGHT_SENSOR_PIN);
 SPid LeftPid;
 SPid RightPid;
 
+void Init() {
+  LeftPid.Init();
+  RightPid.Init();
+  LeftSensor.Clear();
+  RightSensor.Clear();
+}
 
 OpticalSensor::OpticalSensor(int pin)
   : pin_(pin) {
@@ -112,16 +122,24 @@ void on_tmr() { // called every 500us
 
   call_cnt++;
   if (call_cnt == 1000) {
-    should_update_pid = true;
+    should_update_pid = true; // every 500ms
     call_cnt = 0;
   }
+}
+
+void go(bool fwd) {
+  digitalWrite(51, !fwd);
+  digitalWrite(53, fwd);
+  digitalWrite(47, fwd);
+  digitalWrite(49, !fwd);
 }
 
 void setup() {
   Timer1.initialize(500); // in us
   Timer1.attachInterrupt(on_tmr);
-  Serial.begin(115200);
-  Serial.println("Started!");
+  //Serial.begin(115200);
+  Serial3.begin(38400); // to HC-06
+  Serial3.println("Bluetooth started!");
 
   // left pins
   pinMode(left_pwm_pin, OUTPUT);
@@ -129,8 +147,6 @@ void setup() {
   pinMode(53, OUTPUT);
   // left forward
   analogWrite(left_pwm_pin, 0);
-  digitalWrite(51, HIGH);
-  digitalWrite(53, LOW);
 
   // right pins
   pinMode(right_pwm_pin, OUTPUT);
@@ -138,26 +154,47 @@ void setup() {
   pinMode(49, OUTPUT);
   // right forward
   analogWrite(right_pwm_pin, 0);
-  digitalWrite(47, LOW);
-  digitalWrite(49, HIGH);
+
+  Init();
+
+  Serial3.print(255); // begin marker
+  Serial3.print(" ");
+  Serial3.print(255);
+  Serial3.print("\n");
 }
 
 byte _pwm = 0;
+int loop_cnt = 0;
 
 void ctrl() {
-  if (Serial.available() > 0) {
-    char c = Serial.read();
-    if (c == 'r') {
+  if (Serial3.available() > 0) {
+    char c = Serial3.read();
+    if (c == 'r') { // run
       req_speed = 120; // max at this freq
       _pwm = 0;
+      loop_cnt = 0;
+      go(true); // forward
+      Serial3.println("Ok, run");
     }
-    if (c == 'm') {
+    else if (c == 'm') { // middle == run slow
       req_speed = 80;
       _pwm = 0;
+      Serial3.println("Ok, slow run");
     }
-    if (c == 's') {
+    else if (c == 's') { // stop
       req_speed = 0;
       _pwm = 0;
+      Serial3.println("Ok, stop");
+    }
+    else if (c == 'd') { // debug
+      Serial3.print(LeftPid.iState);
+      Serial3.print(" ");
+      Serial3.print(RightPid.iState);
+      Serial3.print("\n");
+    }
+    else { // loopback
+      Serial3.print("Ok, cmd: ");
+      Serial3.println(c);
     }
 
     if (c == '+' && _pwm < 255)
@@ -187,6 +224,7 @@ void loop() {
   if (!should_update_pid)
     return;
 
+  // every 500ms
   should_update_pid = false;
 
   if (req_speed == 0 && !_pwm) {
@@ -203,34 +241,58 @@ void loop() {
   if (_pwm) {
     analogWrite(left_pwm_pin, _pwm);
     analogWrite(right_pwm_pin, _pwm);
-    Serial.print(_pwm);
-    Serial.print(" ");
-    Serial.print(ls);
-    Serial.print(" ");
-    Serial.println(rs);
+    Serial3.print(_pwm);
+    Serial3.print(" ");
+    Serial3.print(ls);
+    Serial3.print(" ");
+    Serial3.println(rs);
+    return;
+  }  
+
+  loop_cnt++;
+
+  if (loop_cnt == 25) { // more than 3s
+    go(false); // backward
+    analogWrite(left_pwm_pin, 0);
+    analogWrite(right_pwm_pin, 0);
+    Init();
+    return;
+  }
+  else if (loop_cnt > 50) { // more than 6s
+    go(true); // forward
+    req_speed = 0; // stop!
     return;
   }
 
-  long lact = LeftPid.UpdatePID(
+  const int thres = 4;
+  if (loop_cnt < thres ||
+     (loop_cnt > 25 && loop_cnt < 25 + thres)) {
+    analogWrite(left_pwm_pin, 160);
+    analogWrite(right_pwm_pin, 160);
+    Serial3.print("Diff lock - ");
+  }
+  else { // diff lock ;)
+    long lact = LeftPid.UpdatePID(
                req_speed - ls, // sum 1
                ls); // AVR PWM should work in range 0 - 255
-  long ract = RightPid.UpdatePID(
+    long ract = RightPid.UpdatePID(
                req_speed - rs, // sum 1
                rs); // AVR PWM should work in range 0 - 255
 
-  Serial.print(lact);
-  LimitValue(lact);
+    Serial3.print(lact);
+    LimitValue(lact);
 
-  Serial.print(" ");
-  Serial.print(ract);
-  LimitValue(ract);
+    Serial3.print(" ");
+    Serial3.print(ract);
+    LimitValue(ract);
 
-  analogWrite(left_pwm_pin, lact);
-  analogWrite(right_pwm_pin, ract);
+    analogWrite(left_pwm_pin, lact);
+    analogWrite(right_pwm_pin, ract);
+  }
 
-  Serial.print(" s: ");
-  Serial.print(ls);
-  Serial.print(" ");
-  Serial.println(rs);
+  Serial3.print(" s: ");
+  Serial3.print(ls);
+  Serial3.print(" ");
+  Serial3.println(rs);
 }
 
