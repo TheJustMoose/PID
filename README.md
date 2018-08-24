@@ -13,3 +13,4 @@ Part 4: https://thejustmoose.livejournal.com/267037.html
 
 Part 5: https://thejustmoose.livejournal.com/272524.html
 
+![PID](https://raw.githubusercontent.com/TheJustMoose/PID/master/pid-s.png)
